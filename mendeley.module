@@ -55,14 +55,6 @@ function mendeley_post($url, $params = array()) {
 function mendeley_menu() {
   $items = array();
 
-  $items['admin/settings/mendeley'] = array( // not yet used
-    'title' => 'Administer Mendeley',
-    'description' => '',
-    'page callback' => 'drupal_get_form',
-    'page arguments' => array('form_id'),
-    'access arguments' => array('administer mendeley'),
-  );
-
   $items['mendeley/publications/%'] = array(
     'title' => 'Alle Publikationen der Fokusgruppe VB',
     'description' => 'Display documents of Mendeley by shared collection id',
@@ -84,30 +76,6 @@ function mendeley_theme() {
 		  'arguments' => array('doc' => NULL),
     )
 	);
-}
-
-/**
- * Implements hook_nodeapi()
- */
-function mendeley_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
-  if($node->type != 'biblio') return;
-  $callback = '_mendeley_' . str_replace(' ', '_', $op);
-  if (function_exists($callback)) {
-    $ret = $callback($node, $a3, $a4);
-  }
-  return $ret;
-}
-
-function _mendeley_delete($node) {
-	// additionally delete from mendeley?
-}
-
-function _mendeley_insert($node) {
-	// insert into mendeley
-}
-
-function _mendeley_update($node) {
-	// update on mendeley
 }
 
 /**
