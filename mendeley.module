@@ -1,0 +1,194 @@
+<?php
+// $Id$
+
+/**
+ * Get Mendeley API Connector
+ */
+function mendeley_get_mendeley_api() {
+	static $mendeley;
+
+	if(empty($mendeley)) {
+		require_once 'sites/all/libraries/mendeleyapi/Mendeley.php';
+		$mendeley = new Mendeley();
+	}
+	
+	return $mendeley;
+}
+
+/**
+ * Call Mendeley API via get
+ *
+ * If the request is already in the Drupal cache it doesn't contact Mendeley. To override set $flush_cache = true
+ *
+ * @param string $url
+ * @param array $params
+ * @param boolean $flush_cache
+ */
+function mendeley_get($url, $params = array(), $flush_cache = FALSE) {
+	if($flush_cache === FALSE) {
+    $url_cache = cache_get(serialize(array($url, $params)));
+    if($url_cache && isset($url_cache->data)) {
+      return $url_cache->data;
+    }
+  }
+
+	$mendeley = mendeley_get_mendeley_api();
+	$response = $mendeley->get($url, $params);
+	cache_set(serialize(array($url, $params)), $response);
+  return $response;
+}
+
+/**
+ * Call Mendeley API via post
+ *
+ * @param string $url
+ * @param array $params
+ */
+function mendeley_post($url, $params = array()) {
+	$mendeley = mendeley_get_mendeley_api();
+  return $mendeley->post($url, $params);
+}
+
+/**
+ * Implements hook_menu().
+ */
+function mendeley_menu() {
+  $items = array();
+
+  $items['admin/settings/mendeley'] = array( // not yet used
+    'title' => 'Administer Mendeley',
+    'description' => '',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('form_id'),
+    'access arguments' => array('administer mendeley'),
+  );
+
+  $items['mendeley/publications/%'] = array(
+    'title' => 'Alle Publikationen der Fokusgruppe VB',
+    'description' => 'Display documents of Mendeley by shared collection id',
+    'page callback' => 'mendeley_publications',
+    'page arguments' => array(2),
+    'access callback' => TRUE,
+  );
+
+  return $items;
+}
+
+function mendeley_theme() {
+  return array(
+    'mendeley_documents' => array(
+		  'arguments' => array('docs' => NULL),
+		  'template' => 'mendeley_publications',
+		),
+		'mendeley_document' => array(
+		  'arguments' => array('doc' => NULL),
+    )
+	);
+}
+
+/**
+ * Implements hook_nodeapi()
+ */
+function mendeley_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
+  if($node->type != 'biblio') return;
+  $callback = '_mendeley_' . str_replace(' ', '_', $op);
+  if (function_exists($callback)) {
+    $ret = $callback($node, $a3, $a4);
+  }
+  return $ret;
+}
+
+function _mendeley_delete($node) {
+	// additionally delete from mendeley?
+}
+
+function _mendeley_insert($node) {
+	// insert into mendeley
+}
+
+function _mendeley_update($node) {
+	// update on mendeley
+}
+
+/**
+ * Themes a publication
+ *
+ * @param object $doc
+ * 	JSON-decoded Mendeley document details object
+ */
+function theme_mendeley_document($doc) {
+  foreach($doc->authors as &$a) {
+    $a = substr(strrchr($a, ' '), 1) . ', ' . $a[0] . '.';
+  }
+
+  $out = array();
+
+  if(isset($doc->authors)) {
+   $out[] = '<span class="mendeley_author">' . implode(', ', $doc->authors) . '</span>';
+  }
+
+  if(isset($doc->year)) {
+    $out[] = '<span class="mendeley_year">' . $doc->year . '</span>.';
+  }
+
+  if(isset($doc->title)) {
+    $out[] = '<span class="mendeley_title">' . (empty($doc->url) ? $doc->title : l($doc->title, $doc->url)) . '</span>.';
+  }
+
+  if(isset($doc->city)) {
+    $out[] = '<span class="mendeley_city">' . $doc->city . '</span>:';
+  }
+
+  if(isset($doc->publisher)) {
+    $out[] = '<span class="mendeley_publisher">' . $doc->publisher . '</span>.';
+  }
+
+  if(isset($doc->tags)) {
+    $tags = array();
+    foreach($doc->tags as $t) {
+      $tags[] = l($t, 'enzyklopaedie/' . $t);
+    }
+    $out[] = '<br /><span class="mendeley_tags">' . implode(' ', $tags) . '</span>';
+  }
+
+  return implode(' ', $out);
+}
+
+/**
+ * Themes a Mendeley shared collection
+ *
+ * @param int $shared_collection_id
+ */
+function mendeley_publications($shared_collection_id = null) {
+  // $shared_collection = '164791'; // 'PublikationslisteFokusgruppeVB'
+  $shared_collection_id = (int)$shared_collection_id;
+  $page = isset($_GET['page']) ? (int)$_GET['page'] : 0;
+
+  // drupal pager counts from zero, mendeley api from one onwards
+  if(is_numeric($page) && $page > 0) {
+    $mendeley_page = $page + 1;
+  } else {
+    $mendeley_page = 1;
+  }
+
+  // get the collection document ids
+  $collection = mendeley_get('sharedcollections/' . $shared_collection_id, array('page' => $mendeley_page, 'items' => 20));
+
+  // get the actual content
+  if($collection) {
+    foreach($collection->document_ids as $id) {
+      $docs[] = mendeley_get('documents/' . $id);
+    }
+
+    // support drupal paging
+    global $pager_page_array, $pager_total, $pager_total_items;
+    if($page < 1) $page = '';
+    $pager_page_array = explode(',', $page);
+    $element = 0;
+    $pager_total_items[$element] = $collection->total_results;
+    $pager_total[$element] = $collection->total_pages;
+    $pager_page_array[$element] = max(0, min((int)$pager_page_array[$element], ((int)$pager_total[$element]) - 1));
+
+    return theme('mendeley_documents', $docs);
+  }
+}

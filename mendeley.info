@@ -1,0 +1,5 @@
+; $Id$
+name = Mendeley
+description = "Allows a connection to Mendeley publications from Drupal"
+core = 6.x
+php = 5.1
